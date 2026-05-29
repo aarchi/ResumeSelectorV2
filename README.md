@@ -8,7 +8,7 @@ The application uses a **fair, skill-first scoring model** that evaluates resume
 
 Download latest portable version from SourceForge:
 
-👉 [Download Resume Shortlister]([SOURCEFORGE_LINK](https://sourceforge.net/projects/ai-resume-screening/files/latest/download))
+👉 [Download Resume Shortlister](https://sourceforge.net/projects/ai-resume-screening/files/latest/download)
 
 
 ![Application Screenshot](/images/ui.png)
