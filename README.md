@@ -8,7 +8,6 @@ The application uses a **fair, skill-first scoring model** that evaluates resume
 ![Application Screenshot](/images/ui.png)
 ![Application Screenshot](/images/rules.png)
 ![Application Screenshot](/images/result.png)
-![Application Screenshot](/images/architecture.png)
 
 ## Table of Contents
 
@@ -99,7 +98,7 @@ The application provides:
 ---
 
 ## 2. Architecture
-
+![Application Screenshot](/images/architecture.png)
 ### High Level Architecture
 
 ```text
