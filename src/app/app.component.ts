@@ -1,182 +1,640 @@
-// Import necessary modules and components
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { PdfService } from './pdf.service'; // Import PdfService
+import { PdfService } from './pdf.service';
+import { PromptService } from './prompt.service';
+
+interface ResumeCandidateMap {
+  originalIndex: number;
+  resumeNumber: number;
+  fileName: string;
+  matchedCandidateName: string;
+  matchStatus: string;
+  parseStatus: 'MATCHED' | 'NOT_MATCHED' | 'PARSING' | 'FAILED';
+  errorMessage?: string;
+}
+
+interface ParsedResumePayload {
+  resumeNumber: number;
+  originalIndex: number;
+  fileName: string;
+  candidateName: string;
+  resumeJson: string;
+  structuredResume: any;
+}
+
+interface AiResumeResult {
+  resumeNumber: number;
+  candidateName?: string;
+  status?: 'DONE' | 'FAILED';
+
+  rawScore: number;
+  score: number;
+  capApplied: boolean;
+  capReason: string;
+
+  recommendation: string;
+  decision: string;
+
+  mandatorySkillsScore: number;
+  realUsageScore: number;
+  experienceScore: number;
+  domainScore: number;
+  responsibilityScore: number;
+  stabilityScore: number;
+  certificationScore: number;
+
+  matchingSkills: string[];
+  missingSkills: string[];
+  optionalSkillsMatched: string[];
+  optionalSkillsMissing: string[];
+
+  keyStrengths: string[];
+  risksOrGaps: string[];
+  careerStability: string;
+  shortSummary: string;
+  expanded?: boolean;
+}
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css']
 })
-export class AppComponent {
-  // Declare variables for form fields, API key, and other properties
+export class AppComponent implements OnInit {
   title = 'ResumeSelection';
+
+  readonly maxResumeUploadLimit = 10;
+  readonly apiKeyStorageKey = 'resume_shortlister_openai_api_key';
+
   resumeFiles: File[] = [];
   fileContents: string[] = [];
-  chatGptResponse: any; // Store the response from ChatGPT
-  errorMessage: string | null = null; // Declare the errorMessage property
-  jobDescription: string = ''; // Initialize jobDescription
-  apiKey: string = ''; // Initialize apiKey
+  resumeCandidateMap: ResumeCandidateMap[] = [];
+  parsedResumePayloads: ParsedResumePayload[] = [];
 
-  minExperience: number = 0; // Initialize minExperience
-  maxExperience: number = 10; // Initialize maxExperience
-  mandatorySkill: string = ''; // Initialize mandatorySkill
-  optionalSkill: string = ''; // Initialize optionalSkill
+  chatGptResponse: any;
+  parsedAiResults: AiResumeResult[] = [];
 
-  loading: boolean = false;
+  errorMessage: string | null = null;
+  successMessage: string | null = null;
+  candidateNameError: string | null = null;
 
-  // Add this property to track file count exceeded status
-  fileCountExceeded: boolean = false;
+  jobDescription = '';
+  apiKey = '';
 
-  // Inject HttpClient and PdfService into the constructor
-  constructor(private http: HttpClient, private pdfService: PdfService) { }
+  minExperience = 0;
+  maxExperience = 10;
+  mandatorySkill = '';
+  optionalSkill = '';
+  candidateNames = '';
 
-  // Define a function to format the response content with line breaks
-  formatChatGptResponse(responseContent: string): string {
-    return responseContent.replace(/\n/g, '<br>');
-  }
+  loading = false;
+  parsing = false;
+  fileCountExceeded = false;
 
-  // Define a function to handle file selection
-  onFileSelected(event: any) {
-    // Ensure that the number of selected files is not more than 3
-    if (event.target.files.length > 2) {
-      // Set the fileCountExceeded flag to true
-      this.fileCountExceeded = true;
-      // Reset the file input
-      event.target.value = null;
-      return;
+  evaluatedCount = 0;
+  totalToEvaluate = 0;
+  currentEvaluatingCandidate = '';
+
+  constructor(
+    private http: HttpClient,
+    private pdfService: PdfService,
+    private promptService: PromptService
+  ) {}
+
+  ngOnInit(): void {
+    const savedApiKey = localStorage.getItem(this.apiKeyStorageKey);
+    if (savedApiKey) {
+      this.apiKey = savedApiKey;
     }
-    // If the file count is within the limit, reset the fileCountExceeded flag
-    this.fileCountExceeded = false;
-    this.resumeFiles = Array.from(event.target.files);
-
-    // Read the file content as text for each file
-    this.resumeFiles.forEach((resumeFile, index) => {
-      if (resumeFile.type === 'application/pdf' || resumeFile.type === 'application/msword' || resumeFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        this.pdfService.extractTextFromPDF(resumeFile).subscribe(
-          (response) => {
-            const extractedText = response.text.replace(/\s+/g, ' ').trim();
-            console.log(`Extracted text for Resume ${index + 1}:`, extractedText);
-            this.fileContents[index] = extractedText;
-          },
-          (error) => {
-            console.error(`Error extracting text for Resume ${index + 1}:`, error);
-            this.errorMessage = `Error extracting text from PDF for Resume ${index + 1}.`;
-          }
-        );
-      } else if (resumeFile.type.startsWith('text/')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          this.fileContents[index] = reader.result as string;
-        };
-        reader.readAsText(resumeFile);
-      } else {
-        this.errorMessage = 'Unsupported file type';
-        console.error('Unsupported file type');
-      }
-    });
   }
-  // Function to reset the form
-  resetForm() {
-    // Optionally, reset the file input field
+
+  onApiKeyChanged(): void {
+    if (this.apiKey.trim()) {
+      localStorage.setItem(this.apiKeyStorageKey, this.apiKey.trim());
+    } else {
+      localStorage.removeItem(this.apiKeyStorageKey);
+    }
+  }
+
+  clearSavedApiKey(): void {
+    this.apiKey = '';
+    localStorage.removeItem(this.apiKeyStorageKey);
+  }
+
+  getCandidateNameList(): string[] {
+    if (!this.candidateNames.trim()) {
+      return [];
+    }
+
+    return this.candidateNames
+      .split(/,|;|\n/)
+      .map(name => name.trim())
+      .filter(name => name.length >= 3);
+  }
+
+  resetUploadData(message?: string): void {
     const fileInput = document.getElementById('resumeFiles') as HTMLInputElement;
+
     if (fileInput) {
       fileInput.value = '';
     }
-  }
-  // Define a function to handle form submission
-  onSubmit() {
-    // Check if required fields are filled
-    if (this.apiKey && this.resumeFiles.length > 0 && this.minExperience <= this.maxExperience && this.mandatorySkill) {
-      this.loading = true;  // Set loading to true
-      // Initialize the request string with job description and other details
-      let requestString = `
-      *Job Description:*
-      ${this.jobDescription}
 
-      - Minimum Experience Required: ${this.minExperience} years
-      - Maximum Experience Required: ${this.maxExperience} years
-      - Mandatory Skill: ${this.mandatorySkill}
-      - Optional Skill: ${this.optionalSkill || 'Not specified'}
+    this.resumeFiles = [];
+    this.fileContents = [];
+    this.resumeCandidateMap = [];
+    this.parsedResumePayloads = [];
+    this.fileCountExceeded = false;
+    this.successMessage = null;
 
-      Important note -
-      Take min and max experience range strictly for calculating percentage
-      Optional skill is not mandatory, so don't use it for the percentage calculation if it's empty. But if it's there, then it will be in favor of the candidate
-
-      *Chances of Resume Selection: [Provide a percentage estimate]*
-
-      *Insights and Logic:*
-      1. Analyze the alignment of the resume with the job description.
-      *keywords*
-      2. Highlight relevant *keywords* in both the job description and the resume.
-      *experience and skills*
-      3. Consider the specified experience and skills, and evaluate how well the resume fulfills these criteria.
-      *exceptional achievements*
-      4. Comment on any exceptional achievements or experiences that enhance the candidate's suitability.
-      *career stability*
-      5. Assess the candidate's job-switching frequency. While this does not impact the percentage calculation, it provides context on the candidate's career stability.
-      6. Ensure a consistent and thorough evaluation to maintain accuracy.
-
-      Your response should be well-organized and in the above format, providing a clear rationale for the estimated percentage. Please use the above format for displaying the results. Add labels and then explain the insight. Thank you for your attention to detail.
-
-      -------------------------------
-    `;
-
-      // Append each resume with a label to the request string
-      this.resumeFiles.forEach((resumeFile, index) => {
-        requestString += `
-        *Resume ${index + 1}:*
-        ${this.fileContents[index]}
-        -------------------------------
-      `;
-      });
-
-      // Continue with the rest of your code to make the API request with the updated requestString
-      this.makeChatGptRequest(requestString);
+    if (message) {
+      this.errorMessage = message;
     }
   }
 
-  // Function to make the ChatGPT API request
-  private makeChatGptRequest(requestString: string) {
+  resetAfterAiResponse(): void {
+    const fileInput = document.getElementById('resumeFiles') as HTMLInputElement;
+
+    if (fileInput) {
+      fileInput.value = '';
+    }
+
+    this.candidateNames = '';
+    this.candidateNameError = null;
+    this.resumeFiles = [];
+    this.fileContents = [];
+    this.resumeCandidateMap = [];
+    this.parsedResumePayloads = [];
+    this.fileCountExceeded = false;
+    this.currentEvaluatingCandidate = '';
+    this.successMessage = 'Evaluation completed. Candidate names and uploaded files have been reset.';
+  }
+
+  onCandidateNamesChanged(): void {
+    this.candidateNameError = null;
+    this.errorMessage = null;
+    this.successMessage = null;
+
+    if (this.resumeFiles.length > 0 || this.parsedResumePayloads.length > 0) {
+      this.resetUploadData('Candidate names changed. Please upload resumes again.');
+    }
+
+    const names = this.getCandidateNameList();
+
+    if (!this.candidateNames.trim()) {
+      this.candidateNameError = 'Candidate names are required.';
+      return;
+    }
+
+    if (names.length === 0) {
+      this.candidateNameError = 'Please enter at least one valid candidate name.';
+      return;
+    }
+
+    const hasOnlySpacesNoSeparator =
+      names.length === 1 &&
+      this.candidateNames.trim().split(/\s+/).length > 2 &&
+      !this.candidateNames.includes(',') &&
+      !this.candidateNames.includes(';') &&
+      !this.candidateNames.includes('\n');
+
+    if (hasOnlySpacesNoSeparator) {
+      this.candidateNameError =
+        'Multiple names detected. Please separate candidate names using comma or new line.';
+    }
+  }
+
+  getFileSize(size: number): string {
+    if (size < 1024) {
+      return `${size} B`;
+    }
+
+    if (size < 1024 * 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  getDisplayNameForResume(index: number): string {
+    const mapping = this.resumeCandidateMap[index];
+
+    if (!mapping) {
+      return 'Waiting...';
+    }
+
+    if (mapping.parseStatus === 'PARSING') {
+      return 'Matching candidate...';
+    }
+
+    if (mapping.parseStatus === 'NOT_MATCHED') {
+      return 'Name not found in resume';
+    }
+
+    if (mapping.parseStatus === 'FAILED') {
+      return 'Parsing failed';
+    }
+
+    return mapping.matchedCandidateName || `Unknown Candidate - Resume ${index + 1}`;
+  }
+
+  getMatchedResumeCount(): number {
+    return this.parsedResumePayloads.length;
+  }
+
+  getRejectedResumeCount(): number {
+    return this.resumeCandidateMap.filter(item => item.parseStatus === 'NOT_MATCHED').length;
+  }
+
+  canSubmit(): boolean {
+    return (
+      !!this.apiKey.trim() &&
+      !!this.candidateNames.trim() &&
+      !this.candidateNameError &&
+      this.parsedResumePayloads.length > 0 &&
+      this.minExperience <= this.maxExperience &&
+      !!this.mandatorySkill.trim() &&
+      !this.loading &&
+      !this.parsing
+    );
+  }
+
+  onFileSelected(event: any): void {
+    this.errorMessage = null;
+    this.successMessage = null;
+    this.chatGptResponse = null;
+    this.parsedAiResults = [];
+    this.fileContents = [];
+    this.resumeCandidateMap = [];
+    this.parsedResumePayloads = [];
+
+    this.onCandidateNamesChanged();
+
+    if (this.candidateNameError) {
+      event.target.value = null;
+      return;
+    }
+
+    const files = event.target.files;
+
+    if (!files || files.length === 0) {
+      this.resumeFiles = [];
+      return;
+    }
+
+    if (files.length > this.maxResumeUploadLimit) {
+      this.fileCountExceeded = true;
+      this.resumeFiles = [];
+      event.target.value = null;
+      this.errorMessage = `Please select no more than ${this.maxResumeUploadLimit} resumes.`;
+      return;
+    }
+
+    const candidateNameList = this.getCandidateNameList();
+
+    if (candidateNameList.length !== files.length) {
+      this.errorMessage =
+        `Validation failed: You entered ${candidateNameList.length} candidate name(s) but uploaded ${files.length} resume(s). Please keep candidate name count and resume count same.`;
+      this.resumeFiles = [];
+      event.target.value = null;
+      return;
+    }
+
+    this.fileCountExceeded = false;
+    this.resumeFiles = Array.from(files);
+    this.parsing = true;
+
+    let completedRequests = 0;
+
+    this.resumeFiles.forEach((resumeFile, index) => {
+      const isSupportedFile =
+        resumeFile.type === 'application/pdf' ||
+        resumeFile.type === 'application/msword' ||
+        resumeFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        resumeFile.type === 'text/plain' ||
+        resumeFile.name.toLowerCase().endsWith('.pdf') ||
+        resumeFile.name.toLowerCase().endsWith('.doc') ||
+        resumeFile.name.toLowerCase().endsWith('.docx') ||
+        resumeFile.name.toLowerCase().endsWith('.txt');
+
+      this.resumeCandidateMap[index] = {
+        originalIndex: index,
+        resumeNumber: index + 1,
+        fileName: resumeFile.name,
+        matchedCandidateName: '',
+        matchStatus: 'PARSING',
+        parseStatus: 'PARSING'
+      };
+
+      if (!isSupportedFile) {
+        this.resumeCandidateMap[index] = {
+          ...this.resumeCandidateMap[index],
+          matchStatus: 'FAILED',
+          parseStatus: 'FAILED',
+          errorMessage: 'Unsupported file type.'
+        };
+
+        completedRequests++;
+        this.checkParsingCompleted(completedRequests);
+        return;
+      }
+
+      this.pdfService.extractTextFromPDF(resumeFile, this.candidateNames).subscribe(
+        (response) => {
+          const matchedCandidateName = response.matched_candidate_name || '';
+          const matchStatus = response.candidate_match_status || 'UNKNOWN';
+
+          if (matchStatus === 'MATCHED' && matchedCandidateName) {
+            const resumeNumberForGpt = this.parsedResumePayloads.length + 1;
+            const structuredResume = response.structured_resume || {};
+            const resumeData = JSON.stringify(structuredResume, null, 2);
+
+            this.fileContents[index] = resumeData;
+
+            this.resumeCandidateMap[index] = {
+              originalIndex: index,
+              resumeNumber: resumeNumberForGpt,
+              fileName: resumeFile.name,
+              matchedCandidateName,
+              matchStatus,
+              parseStatus: 'MATCHED'
+            };
+
+            this.parsedResumePayloads.push({
+              resumeNumber: resumeNumberForGpt,
+              originalIndex: index,
+              fileName: resumeFile.name,
+              candidateName: matchedCandidateName,
+              resumeJson: resumeData,
+              structuredResume
+            });
+          } else {
+            this.resumeCandidateMap[index] = {
+              originalIndex: index,
+              resumeNumber: index + 1,
+              fileName: resumeFile.name,
+              matchedCandidateName: '',
+              matchStatus: 'NOT_MATCHED',
+              parseStatus: 'NOT_MATCHED',
+              errorMessage:
+                'Candidate name was not found in this resume. Please update the resume with candidate name and upload again.'
+            };
+          }
+
+          completedRequests++;
+          this.checkParsingCompleted(completedRequests);
+        },
+        (error) => {
+          console.error(`Error parsing Resume ${index + 1}:`, error);
+
+          this.resumeCandidateMap[index] = {
+            originalIndex: index,
+            resumeNumber: index + 1,
+            fileName: resumeFile.name,
+            matchedCandidateName: '',
+            matchStatus: 'FAILED',
+            parseStatus: 'FAILED',
+            errorMessage: `Error extracting text from Resume ${index + 1}.`
+          };
+
+          completedRequests++;
+          this.checkParsingCompleted(completedRequests);
+        }
+      );
+    });
+  }
+
+  checkParsingCompleted(completedRequests: number): void {
+    if (completedRequests !== this.resumeFiles.length) {
+      return;
+    }
+
+    this.parsing = false;
+
+    if (this.parsedResumePayloads.length === 0) {
+      this.errorMessage =
+        'No candidate names matched any uploaded resume. Please update the resume with candidate name and upload again. Nothing will be sent to GPT.';
+      return;
+    }
+
+    const rejectedCount = this.getRejectedResumeCount();
+
+    if (rejectedCount > 0) {
+      this.errorMessage =
+        `${this.parsedResumePayloads.length} resume(s) matched and will be evaluated. ${rejectedCount} resume(s) were skipped because candidate name was not found in resume.`;
+      return;
+    }
+
+    this.successMessage =
+      `${this.parsedResumePayloads.length} resume(s) parsed successfully. Ready for AI evaluation.`;
+  }
+
+  onSubmit(): void {
+    this.errorMessage = null;
+    this.successMessage = null;
+    this.parsedAiResults = [];
+    this.evaluatedCount = 0;
+    this.totalToEvaluate = this.parsedResumePayloads.length;
+    this.currentEvaluatingCandidate = '';
+
+    if (!this.canSubmit()) {
+      this.errorMessage = 'Please complete all required fields and ensure at least one resume matched a candidate name.';
+      return;
+    }
+
     this.loading = true;
-    // Replace 'YOUR_CHATGPT_API_ENDPOINT' with the actual ChatGPT API endpoint
+    this.evaluateResumesSequentially(0);
+  }
+
+  evaluateResumesSequentially(index: number): void {
+    if (index >= this.parsedResumePayloads.length) {
+      this.loading = false;
+      this.resetAfterAiResponse();
+      return;
+    }
+
+    const payload = this.parsedResumePayloads[index];
+    this.currentEvaluatingCandidate = payload.candidateName;
+    const requestString = this.promptService.buildSingleResumePrompt(
+      payload,
+      this.jobDescription,
+      this.minExperience,
+      this.maxExperience,
+      this.mandatorySkill,
+      this.optionalSkill
+    );
+    this.makeSingleResumeGptRequest(requestString, payload, () => {
+      this.evaluatedCount++;
+      this.evaluateResumesSequentially(index + 1);
+    });
+  }
+
+  makeSingleResumeGptRequest(
+    requestString: string,
+    payload: ParsedResumePayload,
+    onComplete: () => void
+  ): void {
     const chatGptApiEndpoint = 'https://api.openai.com/v1/chat/completions';
 
-    // Define your ChatGPT request payload
     const chatGptRequest = {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4.1',
+      response_format: { type: 'json_object' },
       messages: [
         {
+          role: 'system',
+          content:
+            'You are a strict JSON scoring calculator. Follow the scoring rules exactly. Return only calculated JSON.'
+        },
+        {
           role: 'user',
-          content: requestString // Use the request string as the user's input
+          content: requestString
         }
       ],
+      temperature: 0,
+      top_p: 0
     };
 
     const headers = {
-      'Authorization': `Bearer ${this.apiKey}`,
-      'Content-Type': 'application/json' // Set the Content-Type header
+      Authorization: `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json'
     };
 
-    // Make an HTTP POST request to the ChatGPT API
-    this.http.post(chatGptApiEndpoint, chatGptRequest, { headers: headers })
-      .subscribe(
-        (response) => {
-          this.chatGptResponse = response;
-          console.log('ChatGPT response:', response);
-          this.loading = false;  // Reset loading to false
-          // Reset the form after receiving the response
-          this.resetForm();
-        },
-        (errorResponse: HttpErrorResponse) => {
-          if (errorResponse.status === 429) {
-            this.errorMessage = 'Rate limit exceeded. Please try again later.';
-          } else {
-            this.errorMessage = 'An error occurred while communicating with ChatGPT.';
-          }
-          console.error('Error communicating with ChatGPT:', errorResponse);
-          this.loading = true;
+    this.http.post(chatGptApiEndpoint, chatGptRequest, { headers }).subscribe(
+      (response: any) => {
+        this.chatGptResponse = response;
+        this.parseSingleAiJsonResponse(response, payload);
+        onComplete();
+      },
+      (errorResponse: HttpErrorResponse) => {
+        console.error(`Error evaluating Resume ${payload.resumeNumber}:`, errorResponse);
+
+        this.parsedAiResults.push({
+          resumeNumber: payload.resumeNumber,
+          candidateName: payload.candidateName,
+          status: 'FAILED',
+          rawScore: 0,
+          score: 0,
+          capApplied: true,
+          capReason: 'AI evaluation failed.',
+          recommendation: 'Reject',
+          decision: 'Reject',
+          mandatorySkillsScore: 0,
+          realUsageScore: 0,
+          experienceScore: 0,
+          domainScore: 0,
+          responsibilityScore: 0,
+          stabilityScore: 0,
+          certificationScore: 0,
+          matchingSkills: [],
+          missingSkills: [],
+          optionalSkillsMatched: [],
+          optionalSkillsMissing: [],
+          keyStrengths: [],
+          risksOrGaps: ['AI evaluation failed for this resume.'],
+          careerStability: 'Not assessed',
+          shortSummary: 'AI evaluation failed for this resume.'
+        });
+
+        if (errorResponse.status === 429) {
+          this.errorMessage = 'Rate limit exceeded. Some resumes may not be evaluated.';
+        } else if (errorResponse.status === 401) {
+          this.errorMessage = 'Invalid OpenAI API key.';
+        } else {
+          this.errorMessage = 'An error occurred while communicating with GPT.';
         }
-      );
+
+        onComplete();
+      }
+    );
+  }
+
+  parseSingleAiJsonResponse(response: any, payload: ParsedResumePayload): void {
+    try {
+      const content = response?.choices?.[0]?.message?.content || '';
+      const result = JSON.parse(content);
+
+      this.parsedAiResults.push({
+        ...result,
+        candidateName: payload.candidateName,
+        status: 'DONE',
+        matchingSkills: result.matchingSkills || [],
+        missingSkills: result.missingSkills || [],
+        optionalSkillsMatched: result.optionalSkillsMatched || [],
+        optionalSkillsMissing: result.optionalSkillsMissing || [],
+        keyStrengths: result.keyStrengths || [],
+        risksOrGaps: result.risksOrGaps || [],
+        capApplied: result.capApplied || false,
+        capReason: result.capReason || '',
+        rawScore: result.rawScore ?? this.calculateRawScore(result),
+        expanded: false
+      });
+    } catch (error) {
+      console.error('Failed to parse AI JSON response:', error);
+
+      this.parsedAiResults.push({
+        resumeNumber: payload.resumeNumber,
+        candidateName: payload.candidateName,
+        status: 'FAILED',
+        rawScore: 0,
+        score: 0,
+        capApplied: true,
+        capReason: 'AI response could not be parsed.',
+        recommendation: 'Reject',
+        decision: 'Reject',
+        mandatorySkillsScore: 0,
+        realUsageScore: 0,
+        experienceScore: 0,
+        domainScore: 0,
+        responsibilityScore: 0,
+        stabilityScore: 0,
+        certificationScore: 0,
+        matchingSkills: [],
+        missingSkills: [],
+        optionalSkillsMatched: [],
+        optionalSkillsMissing: [],
+        keyStrengths: [],
+        risksOrGaps: ['AI response could not be parsed.'],
+        careerStability: 'Not assessed',
+        shortSummary: 'AI response could not be parsed for this resume.',
+        expanded: false
+      });
+    }
+  }
+
+  calculateRawScore(result: AiResumeResult): number {
+    return (
+      (result.mandatorySkillsScore || 0) +
+      (result.realUsageScore || 0) +
+      (result.experienceScore || 0) +
+      (result.domainScore || 0) +
+      (result.responsibilityScore || 0) +
+      (result.stabilityScore || 0) +
+      (result.certificationScore || 0)
+    );
+  }
+
+  toggleResult(result: AiResumeResult): void {
+    result.expanded = !result.expanded;
+  }
+
+  getRecommendationClass(recommendation: string): string {
+    const value = (recommendation || '').toLowerCase();
+
+    if (value.includes('strong')) {
+      return 'strong-match';
+    }
+
+    if (value.includes('good')) {
+      return 'good-match';
+    }
+
+    if (value.includes('hold') || value.includes('pending')) {
+      return 'borderline-match';
+    }
+
+    if (value.includes('weak')) {
+      return 'weak-match';
+    }
+
+    return 'reject-match';
   }
 }

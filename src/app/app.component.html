@@ -1,115 +1,478 @@
-<div class="container">
-  <div class="jumbotron">
-    <img src="https://cdn-01.cms-ap-v2i.applyflow.com/hudson-hk-2022/wp-content/uploads/2023/05/resume-examples.png"
-         alt="Logo" class="img-responsive" width="150">
-    <h1 class="display-4">Resume Shortlister</h1>
-    <p class="lead">Upload your resume and find insights.</p>
-  </div>
+<div class="page-shell">
+  <header class="topbar">
+    <div class="brand-badge">RS</div>
 
-  <div class="panel panel-primary">
-    <div class="panel-body">
-      <!-- Form with ngSubmit event binding -->
+    <div class="brand-content">
+      <h1>Resume Screening</h1>
+      <p>GDPR-safe AI resume screening with sequential evaluation and deterministic scoring.</p>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <section class="card form-card">
+      <div class="card-header">
+        <h2>Screening Criteria</h2>
+        <p>Define role requirements and scoring inputs.</p>
+      </div>
+
       <form (ngSubmit)="onSubmit()" #resumeForm="ngForm">
+        <div class="form-group">
+          <label for="apiKey">OpenAI API Key <span class="required">*</span></label>
 
-        <!-- Input field for OpenAI API Key -->
-        <div class="form-group col-md-12">
-          <label for="apiKey">OpenAI API Key</label>
-          <input type="text" class="form-control" id="apiKey" name="apiKey" [(ngModel)]="apiKey"
-                 placeholder="Enter your API key" required #apiKeyInput="ngModel"
-                 [class.error]="apiKeyInput.invalid && (apiKeyInput.dirty || apiKeyInput.touched)">
-          <!-- Display error messages -->
-          <div *ngIf="apiKeyInput.invalid && (apiKeyInput.dirty || apiKeyInput.touched)" class="text-danger">
-            <div *ngIf="apiKeyInput.errors.required">OpenAI API Key is required.</div>
+          <div class="api-key-row">
+            <input
+              type="password"
+              id="apiKey"
+              name="apiKey"
+              [(ngModel)]="apiKey"
+              (ngModelChange)="onApiKeyChanged()"
+              placeholder="Enter your OpenAI API key"
+              required
+            />
+
+            <button type="button" class="secondary-button" (click)="clearSavedApiKey()">
+              Clear
+            </button>
+          </div>
+
+          <small class="hint-text">
+            Saved locally in your browser. It is not stored on backend.
+          </small>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="minExperience">Min Experience <span class="required">*</span></label>
+            <input
+              type="number"
+              id="minExperience"
+              name="minExperience"
+              [(ngModel)]="minExperience"
+              min="0"
+              max="50"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="maxExperience">Max Experience <span class="required">*</span></label>
+            <input
+              type="number"
+              id="maxExperience"
+              name="maxExperience"
+              [(ngModel)]="maxExperience"
+              min="0"
+              max="50"
+              required
+            />
           </div>
         </div>
 
-        <!-- Min Experience -->
-        <div class="form-group col-md-6">
-          <label for="minExperience">Min Experience</label>
-          <input type="number" class="form-control" id="minExperience" name="minExperience" [(ngModel)]="minExperience" 
-                 placeholder="0" min="0" max="50" required #minExp="ngModel"
-                 [class.error]="minExp.invalid && (minExp.dirty || minExp.touched)">
-          <div *ngIf="minExp.invalid && (minExp.dirty || minExp.touched)" class="text-danger">
-            <div *ngIf="minExp.errors.required">Min Experience is required.</div>
-            <div *ngIf="minExp.errors.min">Min Experience must be at least 0.</div>
-            <div *ngIf="minExp.errors.max">Min Experience cannot be greater than 50.</div>
+        <small *ngIf="minExperience > maxExperience" class="error-text">
+          Min experience cannot be greater than max experience.
+        </small>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="mandatorySkill">Mandatory Skill <span class="required">*</span></label>
+            <input
+              type="text"
+              id="mandatorySkill"
+              name="mandatorySkill"
+              [(ngModel)]="mandatorySkill"
+              placeholder="Example: Java, Spring Boot"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="optionalSkill">Optional Skill</label>
+            <input
+              type="text"
+              id="optionalSkill"
+              name="optionalSkill"
+              [(ngModel)]="optionalSkill"
+              placeholder="Example: Kafka, AWS"
+            />
           </div>
         </div>
 
-        <!-- Max Experience -->
-        <div class="form-group col-md-6">
-          <label for="maxExperience">Max Experience</label>
-          <input type="number" class="form-control" id="maxExperience" name="maxExperience" [(ngModel)]="maxExperience" 
-                 placeholder="50" min="0" max="50" required #maxExp="ngModel"
-                 [class.error]="maxExp.invalid && (maxExp.dirty || maxExp.touched)">
-          <div *ngIf="maxExp.invalid && (maxExp.dirty || maxExp.touched)" class="text-danger">
-            <div *ngIf="maxExp.errors.required">Max Experience is required.</div>
-            <div *ngIf="maxExp.errors.min">Max Experience must be at least 0.</div>
-            <div *ngIf="maxExp.errors.max">Max Experience cannot be greater than 50.</div>
-          </div>
+        <div class="form-group">
+          <label for="jobDescription">Job Description</label>
+          <textarea
+            id="jobDescription"
+            name="jobDescription"
+            [(ngModel)]="jobDescription"
+            placeholder="Paste job description here..."
+            rows="7"
+          ></textarea>
         </div>
 
-        <!-- Mandatory Skill -->
-        <div class="form-group col-md-6">
-          <label for="mandatorySkill">Mandatory Skill</label>
-          <input type="text" class="form-control" id="mandatorySkill" name="mandatorySkill" [(ngModel)]="mandatorySkill" 
-                 placeholder="Enter mandatory skill" required #mandatorySkillInput="ngModel"
-                 [class.error]="mandatorySkillInput.invalid && (mandatorySkillInput.dirty || mandatorySkillInput.touched)">
-          <div *ngIf="mandatorySkillInput.invalid && (mandatorySkillInput.dirty || mandatorySkillInput.touched)"
-               class="text-danger">
-            Mandatory Skill is required.
-          </div>
-        </div>
-
-        <!-- Optional Skill -->
-        <div class="form-group col-md-6">
-          <label for="optionalSkill">Optional Skill</label>
-          <input type="text" class="form-control" id="optionalSkill" name="optionalSkill" [(ngModel)]="optionalSkill" 
-                 placeholder="Enter optional skill">
-        </div>
-
-        <!-- Input field for Job Description -->
-        <div class="form-group col-md-12">
-          <label for="jobDescription">Description</label>
-          <input type="text" class="form-control" id="jobDescription" name="jobDescription"
-                 [(ngModel)]="jobDescription" placeholder="Enter job description">
-        </div>
-
-<!-- Input field for Resume Upload -->
-<div class="form-group col-md-12">
-  <label for="resumeFiles">Upload Resumes ( Maximum 2 files allowed) </label>
-  <input type="file" multiple="multiple" class="form-control" id="resumeFiles" (change)="onFileSelected($event)"
-         accept=".pdf, .doc, .docx" multiple required>
-  <small class="text-muted">Accepted formats: .pdf, .doc, .docx, txt</small>
-
-  <!-- Error label for file count limit -->
-  <div *ngIf="fileCountExceeded" class="text-danger">Please select no more than 3 files.</div>
-</div>
-
-        <!-- Submit Button -->
-        <div class="form-group row">
-          <div class="col-md-10 offset-md-2">
-            <!-- Disable the button if resumeFiles is not selected -->
-            <button type="submit" class="btn btn-primary custom-submit-button" [disabled]="!resumeFiles || resumeFiles.length === 0">Upload</button>
-          </div>
-        </div>
+        <button type="submit" class="primary-button" [disabled]="!canSubmit()">
+          <span *ngIf="!loading">Analyze Matched Resumes</span>
+          <span *ngIf="loading">Evaluating {{ evaluatedCount }}/{{ totalToEvaluate }}</span>
+        </button>
       </form>
+    </section>
 
-      <!-- Horizontal line -->
-      <hr>
-  <div *ngIf="loading" class="loading-indicator">
-    <!-- You can use a spinner or any loading message here -->
-    <img src="../assets/images/Hourglass.gif" alt="Loading">  <span class="loading-text">Evaluating...</span>
+    <section class="card upload-card">
+      <div class="card-header">
+        <h2>Resume Upload</h2>
+        <p>Names can be in any order. Count must match resume count.</p>
+      </div>
+
+      <div class="form-group">
+        <label for="candidateNames">Candidate Names <span class="required">*</span></label>
+
+        <textarea
+          id="candidateNames"
+          name="candidateNames"
+          [(ngModel)]="candidateNames"
+          placeholder="Correct examples:&#10;Bikesh Kumar, Khushboo Bhati"
+          rows="5"
+          required
+          (input)="onCandidateNamesChanged()"
+        ></textarea>
+
+        <small class="hint-text">
+          Separate names using comma, semicolon, or new line.
+        </small>
+
+        <div class="candidate-preview" *ngIf="getCandidateNameList().length > 0">
+          <span *ngFor="let name of getCandidateNameList()">{{ name }}</span>
+        </div>
+
+        <small *ngIf="candidateNameError" class="error-text">
+          {{ candidateNameError }}
+        </small>
+      </div>
+
+      <div
+        class="upload-zone"
+        [class.upload-zone-error]="fileCountExceeded"
+        [class.upload-zone-disabled]="!candidateNames.trim() || !!candidateNameError || parsing"
+      >
+        <input
+          type="file"
+          id="resumeFiles"
+          multiple
+          accept=".pdf,.doc,.docx,.txt"
+          (change)="onFileSelected($event)"
+          [disabled]="!candidateNames.trim() || !!candidateNameError || parsing"
+        />
+
+        <div class="upload-icon">📄</div>
+
+        <h3>Upload Resume Files</h3>
+
+        <p *ngIf="candidateNames.trim() && !candidateNameError && !parsing">
+          PDF, DOC, DOCX or TXT supported
+        </p>
+
+        <p *ngIf="!candidateNames.trim()" class="disabled-message">
+          Please add candidate names first
+        </p>
+
+        <p *ngIf="candidateNameError" class="disabled-message">
+          Please fix candidate names first
+        </p>
+
+        <p *ngIf="parsing" class="disabled-message">
+          Parsing resumes...
+        </p>
+
+        <small>Maximum {{ maxResumeUploadLimit }} files allowed</small>
+      </div>
+
+      <div class="summary-strip" *ngIf="resumeFiles.length > 0">
+        <div>
+          <strong>{{ resumeFiles.length }}</strong>
+          <span>Uploaded</span>
+        </div>
+
+        <div>
+          <strong>{{ getMatchedResumeCount() }}</strong>
+          <span>Matched</span>
+        </div>
+
+        <div>
+          <strong>{{ getRejectedResumeCount() }}</strong>
+          <span>Skipped</span>
+        </div>
+      </div>
+
+      <div *ngIf="fileCountExceeded" class="error-box">
+        Please select no more than {{ maxResumeUploadLimit }} files.
+      </div>
+
+      <div *ngIf="errorMessage" class="error-box">
+        {{ errorMessage }}
+      </div>
+
+      <div *ngIf="successMessage" class="success-box">
+        {{ successMessage }}
+      </div>
+
+      <div class="selected-files" *ngIf="resumeFiles.length > 0">
+        <h3>Selected Files</h3>
+
+        <div class="file-item" *ngFor="let file of resumeFiles; let i = index">
+          <div class="file-icon">CV</div>
+
+          <div class="file-main">
+            <strong>{{ file.name }}</strong>
+            <p>{{ getFileSize(file.size) }} · {{ getDisplayNameForResume(i) }}</p>
+
+            <small
+              *ngIf="resumeCandidateMap[i]?.errorMessage"
+              class="file-error"
+            >
+              {{ resumeCandidateMap[i].errorMessage }}
+            </small>
+          </div>
+
+          <span
+            class="status-pill"
+            [class.status-ready]="resumeCandidateMap[i]?.parseStatus === 'MATCHED'"
+            [class.status-failed]="resumeCandidateMap[i]?.parseStatus === 'NOT_MATCHED' || resumeCandidateMap[i]?.parseStatus === 'FAILED'"
+          >
+            {{ resumeCandidateMap[i]?.parseStatus || 'Waiting' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="info-panel">
+  <h3>Validation Rules</h3>
+
+  <div class="info-step">
+    <span>1</span>
+    <p>Candidate name count must match uploaded resume count.</p>
   </div>
-<!-- AI Response Section -->
-<div *ngIf="chatGptResponse" class="ai-response">
-  <!-- Loading indicator -->
 
+  <div class="info-step">
+    <span>2</span>
+    <p>Each resume is parsed and evaluated separately to avoid context mixing.</p>
+  </div>
 
-  <!-- Display AI response -->
-  <div *ngIf="!loading">
-    <h4>AI Response:</h4>
-    <p [innerHTML]="formatChatGptResponse(chatGptResponse.choices[0].message.content)"></p>
+  <div class="info-step">
+    <span>3</span>
+    <p>GPT calculates scoring using mandatory skills, experience, responsibilities and stability rules.</p>
   </div>
 </div>
+    </section>
+  </main>
 
+  <section class="card response-card" *ngIf="loading || parsedAiResults.length > 0">
+    <div class="card-header">
+      <h2>AI Evaluation Result</h2>
+      <p>Results appear one by one as each resume is evaluated.</p>
+    </div>
+
+    <div class="score-guide">
+      <div class="score-guide-item strong-match">85-100 Strong Match</div>
+      <div class="score-guide-item good-match">70-84 Good Match</div>
+      <div class="score-guide-item borderline-match">55-69 Average Match</div>
+      <div class="score-guide-item weak-match">40-54 Weak Match</div>
+      <div class="score-guide-item reject-match">0-39 Reject</div>
+    </div>
+<div class="scoring-summary-card">
+
+  <!-- Hidden Section -->
+  <details class="scoring-details">
+    <summary>
+      View Detailed Scoring Logic
+    </summary>
+
+    <div class="summary-grid">
+
+      <div class="summary-item">
+        <div class="score-badge">30%</div>
+        <div>
+          <h4>Mandatory Skills Match</h4>
+          <p>
+            Checks whether required skills are present in skills,
+            experience, responsibilities or summary.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">25%</div>
+        <div>
+          <h4>Real Usage Evidence</h4>
+          <p>
+            Verifies if the candidate actually worked on the required
+            technologies through responsibilities and implementations.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">15%</div>
+        <div>
+          <h4>Experience Match</h4>
+          <p>
+            Compares total experience with the required experience range.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">10%</div>
+        <div>
+          <h4>Domain Relevance</h4>
+          <p>
+            Checks how relevant the candidate’s domain and role context is.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">10%</div>
+        <div>
+          <h4>Responsibility Strength</h4>
+          <p>
+            Rewards ownership, development, automation,
+            deployments and measurable impact.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">5%</div>
+        <div>
+          <h4>Career Stability</h4>
+          <p>
+            Based on total experience vs number of companies to avoid
+            unfair penalties.
+          </p>
+        </div>
+      </div>
+
+      <div class="summary-item">
+        <div class="score-badge">5%</div>
+        <div>
+          <h4>Certifications & Education</h4>
+          <p>
+            Adds bonus points but cannot compensate for missing mandatory skills.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cap Rules -->
+    <div class="cap-logic-box">
+      <h4>Score Protection Rules</h4>
+
+      <div class="cap-rule">
+        <strong>Mandatory skills missing</strong>
+        <span>Max score: 35%</span>
+      </div>
+
+      <div class="cap-rule">
+        <strong>Weak skill evidence</strong>
+        <span>Max score: 60%</span>
+      </div>
+
+      <div class="cap-rule">
+        <strong>Responsibilities unrelated</strong>
+        <span>Max score: 50%</span>
+      </div>
+
+      <div class="cap-rule">
+        <strong>Experience mismatch</strong>
+        <span>Max score: 60%</span>
+      </div>
+    </div>
+
+    <!-- Fairness -->
+    <div class="fairness-note">
+      <strong>Fairness Rules:</strong>
+      One-page resumes are not penalized. Missing project sections do not
+      reduce score. Every resume is evaluated independently to avoid bias.
+    </div>
+
+  </details>
+</div>
+    <div *ngIf="loading" class="loading-box">
+      <div class="spinner"></div>
+      <p>Evaluating resumes sequentially: {{ evaluatedCount }}/{{ totalToEvaluate }}</p>
+    </div>
+
+    <div *ngIf="parsedAiResults.length > 0" class="compact-result-list">
+  <div class="compact-result-card" *ngFor="let result of parsedAiResults">
+    <div class="compact-result-header">
+      <div>
+        <h3>{{ result.candidateName }}</h3>
+        <p>Resume {{ result.resumeNumber }} · {{ result.status }}</p>
+      </div>
+
+      <div class="compact-score" [ngClass]="getRecommendationClass(result.recommendation)">
+        {{ result.score }}%
+      </div>
+    </div>
+
+    <div class="compact-meta-row">
+      <span [ngClass]="getRecommendationClass(result.recommendation)">
+        {{ result.recommendation }}
+      </span>
+      <span>{{ result.decision }}</span>
+      <span>Raw {{ result.rawScore }}/100</span>
+      <span>Cap {{ result.capApplied ? 'Yes' : 'No' }}</span>
+    </div>
+
+    <div class="compact-score-grid">
+      <div>Mandatory <strong>{{ result.mandatorySkillsScore }}/30</strong></div>
+      <div>Usage <strong>{{ result.realUsageScore }}/25</strong></div>
+      <div>Exp <strong>{{ result.experienceScore }}/15</strong></div>
+      <div>Domain <strong>{{ result.domainScore }}/10</strong></div>
+      <div>Resp <strong>{{ result.responsibilityScore }}/10</strong></div>
+      <div>Stable <strong>{{ result.stabilityScore }}/5</strong></div>
+      <div>Cert <strong>{{ result.certificationScore }}/5</strong></div>
+    </div>
+
+    <p class="compact-summary">{{ result.shortSummary }}</p>
+
+    <button type="button" class="toggle-detail-button" (click)="toggleResult(result)">
+      {{ result.expanded ? 'Hide Details' : 'View Details' }}
+    </button>
+
+    <div class="compact-details" *ngIf="result.expanded">
+      <div class="result-section">
+        <h4>Matching Skills</h4>
+        <p>{{ result.matchingSkills.join(', ') || 'None' }}</p>
+      </div>
+
+      <div class="result-section">
+        <h4>Missing Skills</h4>
+        <p>{{ result.missingSkills.join(', ') || 'None' }}</p>
+      </div>
+
+      <div class="result-section">
+        <h4>Career Stability</h4>
+        <p>{{ result.careerStability || 'Not assessed' }}</p>
+      </div>
+
+      <div class="result-section">
+        <h4>Key Strengths</h4>
+        <ul>
+          <li *ngFor="let strength of result.keyStrengths">{{ strength }}</li>
+        </ul>
+      </div>
+
+      <div class="result-section">
+        <h4>Risks / Gaps</h4>
+        <ul>
+          <li *ngFor="let gap of result.risksOrGaps">{{ gap }}</li>
+        </ul>
+      </div>
+
+      <div *ngIf="result.capApplied" class="cap-reason-box">
+        <strong>Cap Reason</strong>
+        <p>{{ result.capReason }}</p>
+      </div>
+    </div>
+  </div>
+</div>
+  </section>
+</div>
