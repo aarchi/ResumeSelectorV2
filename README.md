@@ -4,7 +4,11 @@ The AI Resume Shortlister is a web application built using Angular + Python Flas
 
 The application uses a **fair, skill-first scoring model** that evaluates resumes independently, validates mandatory skills, checks real-world usage evidence, analyzes career stability, and provides structured hiring recommendations while maintaining GDPR-safe masking of personal information.
 
-![Application Screenshot](/images/resumeselector.PNG)
+
+![Application Screenshot](/images/ui.png)
+![Application Screenshot](/images/rules.png)
+![Application Screenshot](/images/result.png)
+![Application Screenshot](/images/architecture.png)
 
 ## Table of Contents
 
